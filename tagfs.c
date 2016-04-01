@@ -39,10 +39,6 @@ FILE *mylog;
 }
 
 /* get attributes */
-/* Return file attributes. The "stat" structure is described in detail in the stat(2) manual page. 
-   For the given pathname, this should fill in the elements of the "stat" structure. 
-   If a field is meaningless or semi-meaningless (e.g., st_ino) then it should be set to 0 or given a "reasonable" value. 
-   This call is pretty much required for a usable filesystem. */ 
 static int tag_getattr(const char *path, struct stat *stbuf) {
   char *realpath = tag_realpath(path);
   int res;
@@ -77,7 +73,6 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   }
 
   LOG("readdir returning %s\n", strerror(-res));
-  return 0;
   return 0;
 }
 
@@ -141,8 +136,6 @@ static struct fuse_operations tag_oper = {
 /*******************
  * Main
  */
-
-
 
 int main(int argc, char ** argv) {
   int err;
