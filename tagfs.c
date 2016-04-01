@@ -28,9 +28,39 @@ FILE *mylog;
 #define LOG(args...) do { fprintf(mylog, args); fflush(mylog); } while (0)
 
 /*******************
+ * Hash structure
+ */
+// TODO
+
+/*******************
+ * Parser 
+ */
+// TODO
+
+/*******************
+ * Hash structure management
+ */
+
+/* add a tag to the hash tables */
+// TODO
+
+/* remove a tag from the hash tables */
+// TODO
+
+/* add a file to the hash tables */
+// TODO
+
+/* rename a file in the hash tables */
+// TODO
+
+/* remove a file to the hash tables */
+// TODO
+
+/*******************
  * File operations
  */
 
+/* get the path of the file in the VFS */
  char * tag_realpath(const char *path) {
    char *realpath;
    char *lastslash = strrchr(path, '/');
@@ -127,10 +157,48 @@ int tag_read(const char *path, char *buffer, size_t len, off_t off, struct fuse_
   return res;
 }
 
+/* add a new tag to file 
+ * example: ln a.jpg baz/a.jpg 
+ */
+int tag_link(const char* from, const char* to) {
+  return 0;
+}
+
+/* change a tag into another 
+ * example: mv foo/a.jpg baz/a.jpg 
+ */
+int tag_rename(const char* from, const char* to) {
+  return 0;
+}
+
+/* remove a tag from a file 
+ * example: rm montag/a.jpg 
+ */
+int tag_unlink(const char* path) {
+  return 0;
+}
+
+/* create a new tag not yet bound to a file 
+ * example: mkdir montag/
+ */
+int mkdir(const char* path, mode_t mode) {
+  return 0;
+}
+
+/* remove a non used tag 
+ * example: rmdir montag
+ */
+int rmdir(const char* path) {
+  return 0;
+}
+
 static struct fuse_operations tag_oper = {
   .getattr = tag_getattr,
   .readdir = tag_readdir,
-  .read = tag_read
+  .read = tag_read,
+  .link = tag_link,
+  .rename = tag_rename,
+  .unlink = tag_unlink
 };
 
 /*******************
@@ -156,6 +224,9 @@ int main(int argc, char ** argv) {
 
   mylog = fopen(LOGFILE, "a");
   LOG("\n");
+  
+  // TODO: parse the .tags file to init global hash tables
+  
   LOG("starting tagfs in %s\n", dirpath);
   err = fuse_main(argc, argv, &tag_oper, NULL);
   LOG("stopped tagfs with return code %d\n", err);
