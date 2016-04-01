@@ -36,7 +36,26 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
 }
 
 /* list files within directory */
-static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) 
+{
+  struct dirent *dirent;
+  int res = 0;
+
+  LOG("readdir '%s'\n", path);
+
+  rewinddir(dir);
+  while ((dirent = readdir(dir)) != NULL)
+  {
+    struct stat stbuf;
+    res = tag_getattr(dirent->d_name, &stbuf);
+    if(dirent->d_type == 8)
+    {
+      filler(buf, dirent->d_name, NULL, 0);
+    }
+  }
+
+  LOG("readdir returning %s\n", strerror(-res));
+  return 0;
   return 0;
 }
 
