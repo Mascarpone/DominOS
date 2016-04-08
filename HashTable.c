@@ -12,7 +12,7 @@ void addTableEntry(struct TableEntry** table, char* name) {
 	if (entry == NULL){
 		entry = malloc(sizeof(struct TableEntry));
 		entry->head = NULL;
-		strcpy(entry->name, name);	
+		strcpy(entry->name, name);
 		HASH_ADD_STR(*table, name, entry);
 	}    
 }
@@ -38,16 +38,22 @@ void replaceTableEntry(struct TableEntry **table, struct TableEntry *entry){
 void delTableEntry(struct TableEntry** table, char* name) {
   struct TableEntry* entry;
   HASH_FIND_STR(*table, name, entry);
-  HASH_DEL( *table, entry);  
+  HASH_DEL(*table, entry);  
   free(entry);            
 }
 
 void delTable(struct TableEntry** table) {
   struct TableEntry *current, *tmp;
+	struct Label *llcurrent, *lltmp;
   HASH_ITER(hh, *table, current, tmp) {
-    HASH_DEL( *table, current);  
+		LL_FOREACH_SAFE(current->head,llcurrent,lltmp) {
+			LL_DELETE(current->head, llcurrent);
+			free(llcurrent);
+		}
+    HASH_DEL(*table, current);  
     free(current);            
   }
+	free(*table);
 }
 
 int getTableSize(struct TableEntry** table){
@@ -62,22 +68,28 @@ int entrycmp(struct TableEntry *a, struct TableEntry *b) {
   return strcmp(a->name,b->name);
 }
 
-void addLabel(struct Label* head, char* lname){
+void addLabel(struct Label** head, char* lname){
   struct Label* add = malloc(sizeof(struct Label));
   strcpy(add->name, lname);
   add->next = NULL;
   struct Label* tmp;
-  LL_SEARCH(head, tmp , add, labelcmp); /*label already in the list ?*/
-  if (tmp)
+  LL_SEARCH(*head, tmp , add, labelcmp); /*label already in the list ?*/
+  if (tmp) {
+		free(add);
     return;
-  LL_PREPEND(head,add);
+	}
+  LL_PREPEND(*head,add);
 }
 
-void delLabel(struct Label* head, char* lname){
-  struct Label* del = malloc(sizeof(struct Label));
-  strcpy(del->name, lname);
-  del->next = NULL;
-  LL_DELETE(head, del);
+void delLabel(struct Label** head, char* lname){
+	struct Label* todel;
+  struct Label* dellike = malloc(sizeof(struct Label));
+	strcpy(dellike->name, lname);
+	dellike->next = NULL;
+	LL_SEARCH(*head, todel, dellike, labelcmp);
+  LL_DELETE(*head, todel);
+	free(todel);
+	free(dellike);
 }
 
 int findLabel(struct Label* head, char* lname){
@@ -101,10 +113,11 @@ int countLabels(struct Label* l){
 
 void addEntryLabel(struct TableEntry** table, char* entry_name, char* label){
   struct TableEntry* entry = findTableEntry(table, entry_name);
-  if (entry)
-    addLabel(entry->head, label);
-  else{
-    perror("Canot find entry\n");
+  if (entry) {
+    addLabel(&(entry->head), label);
+	}
+  else {
+    perror("Cannot find entry\n");
     exit(-1);
   }
 }
