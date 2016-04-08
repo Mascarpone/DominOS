@@ -6,7 +6,7 @@
 
 struct Label {
     char name[256];
-    struct ListEntry *next;
+    struct Label *next;
 };
 
 struct TableEntry {

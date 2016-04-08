@@ -1,6 +1,7 @@
-#include <name.h>  
+
 #include <stdlib.h>  
 #include <stdio.h> 
+#include <string.h>
 #include "HashTable.h"
 
 
@@ -74,7 +75,7 @@ void addLabel(struct Label* head, char* lname){
 
 void delLabel(struct Label* head, char* lname){
   struct Label* del = malloc(sizeof(struct Label));
-  del->name = lname;
+  strcpy(del->name, lname);
   del->next = NULL;
   LL_DELETE(head, del);
 }
@@ -94,7 +95,7 @@ int findLabel(struct Label* head, char* lname){
 int countLabels(struct Label* l){
   struct Label* elt;
   int count;
-  LL_COUNT(label,elt,count);
+  LL_COUNT(l,elt,count);
   return count;
 }
 

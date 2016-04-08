@@ -7,8 +7,8 @@
 int main(int argc, char *argv[]) {
     char **n, *names[] = { "joe", "bob", "betty", NULL };
     char buff[] = "betty";
-    struct HashEntry **table = malloc(sizeof(struct HashEntry));
-    struct HashEntry *tmp, *entry=NULL;
+    struct TableEntry **table = malloc(sizeof(struct TableEntry));
+    struct TableEntry *tmp, *entry=NULL;
     int i=0;
 
     for (n = names; *n != NULL; n++) {
