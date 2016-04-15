@@ -72,6 +72,8 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 {
   struct dirent *dirent;
   int res = 0;
+  char ** tag_folders = malloc(sizeof(char*)*getTableSize(tag_files));
+  int i = 0;
 
   LOG("readdir '%s'\n", path);
 
@@ -82,9 +84,26 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
     res = tag_getattr(dirent->d_name, &stbuf);
     if(dirent->d_type == 8)
     {
+      // TODO: select the files that have the tag corresponding to the folders they are in
       filler(buf, dirent->d_name, NULL, 0);
+      struct TableEntry* f = findTableEntry(file_tags, dirent->d_name);
+      struct Label* current = NULL;
+      LL_FOREACH(f->head, current) {
+        for (int j = 0; j < i; j++) {
+          // TODO: display only the tags that are not already in the path
+          if (!strcmp(tag_folders[j], current->name)) goto next;
+        }
+        tag_folders[i++] = current->name;
+      next:
+      }
     }
   }
+
+  for (int j = 0; j < i; j++) {
+    filler(buf, tag_folders[j], NULL, 0);
+  }
+
+  free(tag_folders);
 
   LOG("readdir returning %s\n", strerror(-res));
   return 0;
