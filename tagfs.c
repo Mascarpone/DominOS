@@ -16,9 +16,6 @@
 #include <sys/types.h>
 #include <dirent.h>
 
-static DIR *dir;
-static char *dirpath;
-
 /*******************
  * Logs
  */
@@ -28,33 +25,19 @@ FILE *mylog;
 #define LOG(args...) do { fprintf(mylog, args); fflush(mylog); } while (0)
 
 /*******************
- * Hash structure
- */
-// TODO
-
-/*******************
  * Parser 
  */
-// TODO
+
+#include "parser/parser.h"
 
 /*******************
- * Hash structure management
+ * Globals
  */
-
-/* add a tag to the hash tables */
-// TODO
-
-/* remove a tag from the hash tables */
-// TODO
-
-/* add a file to the hash tables */
-// TODO
-
-/* rename a file in the hash tables */
-// TODO
-
-/* remove a file to the hash tables */
-// TODO
+ 
+static DIR *dir;
+static char *dirpath;
+struct TableEntry * tag_files = NULL;
+struct TableEntry * file_tags = NULL;
 
 /*******************
  * File operations
@@ -181,14 +164,14 @@ int tag_unlink(const char* path) {
 /* create a new tag not yet bound to a file 
  * example: mkdir montag/
  */
-int mkdir(const char* path, mode_t mode) {
+int tag_mkdir(const char* path, mode_t mode) {
   return 0;
 }
 
 /* remove a non used tag 
  * example: rmdir montag
  */
-int rmdir(const char* path) {
+int tag_rmdir(const char* path) {
   return 0;
 }
 
@@ -198,7 +181,9 @@ static struct fuse_operations tag_oper = {
   .read = tag_read,
   .link = tag_link,
   .rename = tag_rename,
-  .unlink = tag_unlink
+  .unlink = tag_unlink,
+  .mkdir = tag_mkdir,
+  .rmdir = tag_rmdir
 };
 
 /*******************
@@ -225,7 +210,12 @@ int main(int argc, char ** argv) {
   mylog = fopen(LOGFILE, "a");
   LOG("\n");
   
-  // TODO: parse the .tags file to init global hash tables
+  // parse the .tags file to init global hash tables
+  char *tagfilepath = malloc(sizeof(char)*(strlen(dirpath)+7));
+  strcpy(tagfilepath, dirpath);
+  strcat(tagfilepath, "/.tags"); 
+  parse(tagfilepath, &file_tags, &tag_files);
+  free(tagfilepath);
   
   LOG("starting tagfs in %s\n", dirpath);
   err = fuse_main(argc, argv, &tag_oper, NULL);
