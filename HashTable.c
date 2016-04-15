@@ -6,7 +6,7 @@
 
 
 
-void addTableEntry(struct TableEntry** table, char* name) {
+struct TableEntry* addTableEntry(struct TableEntry** table, char* name) {
 	struct TableEntry* entry;
 	HASH_FIND_STR(*table, name, entry); /* name already in the hash? */
 	if (entry == NULL){
@@ -14,7 +14,9 @@ void addTableEntry(struct TableEntry** table, char* name) {
 		entry->head = NULL;
 		strcpy(entry->name, name);
 		HASH_ADD_STR(*table, name, entry);
-	}    
+		return entry;
+	}
+	return NULL;    
 }
 
 struct TableEntry* findTableEntry(struct TableEntry** table, char* name) {
