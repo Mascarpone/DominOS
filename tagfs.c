@@ -28,7 +28,8 @@ FILE *mylog;
  * Parser 
  */
 
-#include "parser/parser.h"
+#include "HashTable.h"
+#include "parser.h"
 
 /*******************
  * Globals

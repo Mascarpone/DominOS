@@ -1,12 +1,13 @@
 CPPFLAGS=-D_FILE_OFFSET_BITS=64
 CFLAGS=-Wno-unused-label -Wno-unused-function
 
-PROGRAMS = tagfs
+all: tagfs
 
-all: $(PROGRAMS)
+tagfs: tagfs.o parser.o HashTable.o
+	gcc $^ -o $@ -lfuse
 
-%: %.c
-	gcc $(CPPFLAGS) $(CFLAGS) -Wall $< -o $@ -lfuse
+%.o: %.c
+	gcc -c $< -o $@ $(CPPFLAGS) $(CFLAGS)
 
 clean:
-	$(RM) $(PROGRAMS) *.log
+	$(RM) tagfs *.o *.log

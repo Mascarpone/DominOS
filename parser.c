@@ -1,6 +1,4 @@
-#include "HashTable.h"
-#include <stdlib.h>
-#include <stdio.h>
+#include "parser.h"
 
 void parse(char* fName, struct TableEntry** file_tags, struct TableEntry** tag_files) {
   char line[256], last_file[256], string[256];
