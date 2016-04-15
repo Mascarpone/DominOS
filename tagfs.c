@@ -225,5 +225,8 @@ int main(int argc, char ** argv) {
   free(dirpath);
 
   LOG("\n");
+  
+  delTable(&tag_files);
+  delTable(&file_tags);
   return err;
 }
