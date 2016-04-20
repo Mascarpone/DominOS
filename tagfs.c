@@ -76,10 +76,11 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   int res;
 
   LOG("getattr '%s'\n", path);
-
+  
   res = stat(realpath, stbuf);
   if (res < 0 && errno == ENOENT)
     res = stat(dirpath, stbuf);
+
   free(realpath);
   return res;
 }
@@ -94,6 +95,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s = tag_fillpathtags(path_tags, path); // get the tags in the path
   int hastags = 0;
+  int nbfileindir = 0;
   
   struct TableEntry* f = NULL;
   struct Label* current = NULL;
@@ -127,6 +129,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
         current = NULL;
       }
       if (!hastags) continue;
+      nbfileindir++;
       
       // display the file
       filler(buf, dirent->d_name, NULL, 0);
@@ -160,6 +163,9 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   free(tag_folders);
   for(j = 0; j < s; j++) free(path_tags[j]);
   free(path_tags);
+  
+  // if there is no file in the directory then it doesn't exist
+  if (nbfileindir == 0) { LOG("no directory\n"); return -ENOENT; }
 
   return 0;
 }
