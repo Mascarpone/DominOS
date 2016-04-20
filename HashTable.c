@@ -5,7 +5,6 @@
 #include "HashTable.h"
 
 
-
 struct TableEntry* addTableEntry(struct TableEntry** table, char* name) {
 	struct TableEntry* entry;
 	HASH_FIND_STR(*table, name, entry); /* name already in the hash? */
@@ -94,7 +93,7 @@ void delLabel(struct Label** head, char* lname){
 	free(dellike);
 }
 
-int findLabel(struct Label* head, char* lname){
+int searchLabel(struct Label* head, char* lname) {
   struct Label* add = malloc(sizeof(struct Label));
   strcpy(add->name, lname);
   add->next = NULL;
