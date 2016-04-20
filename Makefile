@@ -3,11 +3,11 @@ CFLAGS=-Wno-unused-label -Wno-unused-function
 
 all: tagfs
 
-tagfs: tagfs.o parser.o HashTable.o
+tagfs: tagfs.o parser/parser.o parser/HashTable.o
 	gcc $^ -o $@ -lfuse
 
 %.o: %.c
 	gcc -c $< -o $@ $(CPPFLAGS) $(CFLAGS)
 
 clean:
-	$(RM) tagfs *.o *.log
+	$(RM) tagfs *.o *.log parser/*.o
