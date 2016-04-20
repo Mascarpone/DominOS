@@ -45,11 +45,29 @@ struct TableEntry * file_tags = NULL;
  */
 
 /* get the path of the file in the VFS */
- char * tag_realpath(const char *path) {
+char * tag_realpath(const char *path) {
    char *realpath;
    char *lastslash = strrchr(path, '/');
    asprintf(&realpath, "%s/%s", dirpath, (lastslash == NULL) ? "" : lastslash + 1);
    return realpath;
+}
+
+/* get the tags in the path into the path_tags table */
+int tag_fillpathtags(char ** path_tags, const char * path) {
+  int i = 0;
+  char * pathcpy = malloc(sizeof(char)*strlen(path));
+  strcpy(pathcpy, path);
+  
+  char * tok = strtok(pathcpy, "/");
+  while(tok != NULL) {
+    path_tags[i] = malloc(sizeof(char)*strlen(tok));
+    strcpy(path_tags[i], tok);
+    tok = strtok(NULL, "/");
+    i++;
+  }
+  
+  free(pathcpy);
+  return i;
 }
 
 /* get attributes */
@@ -64,29 +82,85 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     res = stat(dirpath, stbuf);
   free(realpath);
   return res;
-  
 }
 
 /* list files within directory */
 static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) 
 {
   struct dirent *dirent;
-  int res = 0;
+  int i = 0;
+  int j = 0;
+  char ** tag_folders = malloc(sizeof(char*)*getTableSize(&tag_files));
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+  int hastags = 0;
+  
+  struct TableEntry* f = NULL;
+  struct Label* current = NULL;
 
   LOG("readdir '%s'\n", path);
 
   rewinddir(dir);
   while ((dirent = readdir(dir)) != NULL)
   {
-    struct stat stbuf;
-    res = tag_getattr(dirent->d_name, &stbuf);
-    if(dirent->d_type == 8)
-    {
+    f = findTableEntry(&file_tags, dirent->d_name);
+    current = NULL;
+        
+    // case of a file without tag when in the root folder
+    if (!f && !strcmp(path, "/")) { filler(buf, dirent->d_name, NULL, 0); }
+    // case of a file without tag when not in the root folder
+    else if (!f) { continue; }
+    // default case
+    else {
+      // test if the file has all the tags in the path
+      hastags = 1;
+      current = NULL;
+      for (j = 0; j < s; j++) {
+        hastags = 0;
+        LL_FOREACH(f->head, current) {
+          if (!strcmp(current->name, path_tags[j])) {
+            hastags = 1;
+            break;
+          }
+        }
+        if (!hastags) break;
+        current = NULL;
+      }
+      if (!hastags) continue;
+      
+      // display the file
       filler(buf, dirent->d_name, NULL, 0);
+      
+      // get its tags to create folders
+      current = NULL;
+      LL_FOREACH(f->head, current) {
+        // add only the tags that are not already in the path
+        for (j = 0; j < s; j++) {
+          if (!strcmp(path_tags[j], current->name)) goto next;
+        }
+        // add only once
+        for (j = 0; j < i; j++) {
+          if (!strcmp(tag_folders[j], current->name)) goto next;
+        }
+        tag_folders[i] = malloc(sizeof(char)*strlen(current->name));
+        strcpy(tag_folders[i], current->name);
+        i++;
+        next:
+        continue;
+      }
     }
   }
 
-  LOG("readdir returning %s\n", strerror(-res));
+  // display the folders corresponding to the tags 
+  for (j = 0; j < i; j++) {
+    filler(buf, tag_folders[j], NULL, 0);
+    free(tag_folders[j]);
+  }
+
+  free(tag_folders);
+  for(j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
+
   return 0;
 }
 
