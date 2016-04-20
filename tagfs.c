@@ -45,11 +45,30 @@ struct TableEntry * file_tags = NULL;
  */
 
 /* get the path of the file in the VFS */
- char * tag_realpath(const char *path) {
+char * tag_realpath(const char *path) {
    char *realpath;
    char *lastslash = strrchr(path, '/');
    asprintf(&realpath, "%s/%s", dirpath, (lastslash == NULL) ? "" : lastslash + 1);
    return realpath;
+}
+
+/* get the tags in the path into the path_tags table */
+void tag_fillpathtags(char ** path_tags, const char * path) {
+  int i = 0;
+  char * pathcpy = malloc(sizeof(char)*strlen(path));
+  strcpy(pathcpy, path);
+  LOG("path: %s\n", path);
+  
+  char * tok = strtok(pathcpy, "/");
+  while(tok != NULL) {
+    LOG("tag: ");
+    path_tags[i++] = tok;
+    LOG("%s\n", path_tags[i]);
+    tok = strtok(NULL, "/");
+  }
+  path_tags[i] = NULL;
+  
+  free(pathcpy);
 }
 
 /* get attributes */
@@ -72,7 +91,9 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 {
   struct dirent *dirent;
   int res = 0;
-  char ** tag_folders = malloc(sizeof(char*)*getTableSize(tag_files));
+  char ** tag_folders = malloc(sizeof(char*)*getTableSize(&tag_files));
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  tag_fillpathtags(path_tags, path);
   int i = 0;
 
   LOG("readdir '%s'\n", path);
@@ -80,22 +101,45 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   rewinddir(dir);
   while ((dirent = readdir(dir)) != NULL)
   {
-    struct stat stbuf;
-    res = tag_getattr(dirent->d_name, &stbuf);
+    //struct stat stbuf;
+    //res = tag_getattr(dirent->d_name, &stbuf);
     if(dirent->d_type == 8)
-    {
-      // TODO: select the files that have the tag corresponding to the folders they are in
+    {    
+      LOG("coucou: %s\n", dirent->d_name);
       filler(buf, dirent->d_name, NULL, 0);
-      struct TableEntry* f = findTableEntry(file_tags, dirent->d_name);
-      struct Label* current = NULL;
-      LL_FOREACH(f->head, current) {
-        for (int j = 0; j < i; j++) {
-          // TODO: display only the tags that are not already in the path
-          if (!strcmp(tag_folders[j], current->name)) goto next;
-        }
-        tag_folders[i++] = current->name;
-      next:
-      }
+      //struct TableEntry* f = findTableEntry(&file_tags, dirent->d_name);
+      //struct Label* current = NULL;
+      //
+      //int ok = 1;
+      //for (char **p = path_tags; *p != NULL; p++) {
+      //  ok = 0;
+      //  LL_FOREACH(f->head, current) { 
+      //    if (!strcmp(*p, current->name)) {
+      //      ok = 1;
+      //      break;
+      //    }
+      //  }    
+      //  if (!ok) break;
+      //  current = NULL;
+      //}
+      //
+      //if (ok) 
+      //{
+      //  filler(buf, dirent->d_name, NULL, 0);
+      //  LL_FOREACH(f->head, current) {
+      //    // display only the tags that are not already in the path
+      //    for (char **p = path_tags; *p != NULL; p++) {
+      //      if (!strcmp(*p, current->name)) goto next;
+      //    }
+      //    // display only once
+      //    for (int j = 0; j < i; j++) {
+      //      if (!strcmp(tag_folders[j], current->name)) goto next;
+      //    }
+      //    tag_folders[i++] = current->name;
+      //    next:
+      //    break;
+      //  }
+      //}
     }
   }
 
@@ -104,6 +148,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   }
 
   free(tag_folders);
+  free(path_tags);
 
   LOG("readdir returning %s\n", strerror(-res));
   return 0;
