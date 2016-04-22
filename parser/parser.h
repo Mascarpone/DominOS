@@ -4,6 +4,12 @@
 #include "HashTable.h"
 #include <stdio.h>
 
-void parse(char*, struct TableEntry**, struct TableEntry**);
+/**
+ * extract from .tag all file/tags assosiations and arrange them into two tables files->tags and tags->files
+ * @param fName     file to parse
+ * @param file_tags where to store table of files
+ * @param tag_files where to store table of tags
+ */
+void parse(char* fName, struct TableEntry** file_tags, struct TableEntry** tag_files);
 
 #endif
