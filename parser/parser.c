@@ -15,7 +15,7 @@ void parse(char* fName, struct TableEntry** file_tags, struct TableEntry** tag_f
     exit(-1);
   }
   // Scan All-files tags
-  while (fgets(line, 20, file) != NULL) {
+  while (fgets(line, 150, file) != NULL) {
     if (line[0]=='\n' || line[0]=='\0' || line[0]=='#') {
       continue;
     }
@@ -32,7 +32,7 @@ void parse(char* fName, struct TableEntry** file_tags, struct TableEntry** tag_f
     pos = ftell(file);
   }
 
-  while (fgets(line, 20, file) != NULL) {
+  while (fgets(line, 150, file) != NULL) {
     if (line[0]=='\n' || line[0]=='\0' || line[0]=='#') {
       continue;
     }

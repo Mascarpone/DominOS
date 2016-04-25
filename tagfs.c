@@ -75,13 +75,30 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   char *realpath = tag_realpath(path);
   int res;
 
-  LOG("getattr '%s'\n", path);
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s = 0;
+
+  LOG("getattr '%s'", path);
   
   res = stat(realpath, stbuf);
-  if (res < 0 && errno == ENOENT)
+  // if the file is not found, it might be a tag (same as the root directory)
+  if (res < 0 && errno == ENOENT) {
+    // check if the tag exists
+    s = tag_fillpathtags(path_tags, path); // get the tags in the path
+    for (int j = 0; j < s; j++) {
+      if (!findTableEntry(&tag_files, path_tags[j])) {
+        res = -ENOENT;
+        goto end_getattr;
+      }
+    }
     res = stat(dirpath, stbuf);
-
+  }
+  
+  end_getattr:
+  for(int j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
   free(realpath);
+  LOG(" returning %d\n", res);
   return res;
 }
 
@@ -225,46 +242,79 @@ int tag_read(const char *path, char *buffer, size_t len, off_t off, struct fuse_
  * example: ln a.jpg baz/a.jpg 
  */
 int tag_link(const char* from, const char* to) {
-  return 0;
+  int res = 0;
+  
+  LOG("link '%s'->'%s'\n", from, to);
+  
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s = tag_fillpathtags(path_tags, to); // get the tags in the path
+  
+  // the last string of path_tags is the name of the file
+  if (findTableEntry(&file_tags, path_tags[s-1])) {
+    for (int j = 0; j < s-1; j++) {
+      // update the data structures
+      addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
+      addTableEntry(&tag_files, path_tags[j]);
+      addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
+      // TODO: update the .tags file
+    }
+  }
+  else {
+    res = -ENOENT;
+  }
+  
+  for(int j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
+  return res;
 }
 
 /* change a tag into another 
  * example: mv foo/a.jpg baz/a.jpg 
  */
 int tag_rename(const char* from, const char* to) {
-  return 0;
+  int res = 0;
+  LOG("rename '%s'->'%s'\n", from, to);
+  return res;
 }
 
 /* remove a tag from a file 
  * example: rm montag/a.jpg 
  */
 int tag_unlink(const char* path) {
-  return 0;
+  int res = 0;
+  LOG("unlink '%s'\n", path);
+  return res;
 }
 
 /* create a new tag not yet bound to a file 
  * example: mkdir montag/
  */
 int tag_mkdir(const char* path, mode_t mode) {
-  return 0;
+  int res = 0;
+  LOG("mkdir '%s'\n", path);
+  // addTableEntry(&tag_files, (char *)path);
+  // TODO: update the .tags file
+  return res;
 }
 
 /* remove a non used tag 
  * example: rmdir montag
  */
 int tag_rmdir(const char* path) {
-  return 0;
+  int res = 0;
+  LOG("rmdir '%s'\n", path);
+  return res;
 }
 
 static struct fuse_operations tag_oper = {
   .getattr = tag_getattr,
   .readdir = tag_readdir,
-  .read = tag_read,
-  .link = tag_link,
-  .rename = tag_rename,
-  .unlink = tag_unlink,
   .mkdir = tag_mkdir,
-  .rmdir = tag_rmdir
+  .unlink = tag_unlink,
+  .rmdir = tag_rmdir,
+  .rename = tag_rename,
+  .link = tag_link,
+  .read = tag_read,
 };
 
 /*******************
@@ -299,6 +349,7 @@ int main(int argc, char ** argv) {
   free(tagfilepath);
   
   LOG("starting tagfs in %s\n", dirpath);
+  umask(0);
   err = fuse_main(argc, argv, &tag_oper, NULL);
   LOG("stopped tagfs with return code %d\n", err);
 
