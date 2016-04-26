@@ -72,32 +72,50 @@ int tag_fillpathtags(char ** path_tags, const char * path) {
 
 /* get attributes */
 static int tag_getattr(const char *path, struct stat *stbuf) {
-  char *realpath = tag_realpath(path);
-  int res;
-
+  int res = 0;
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = 0;
+  int s = tag_fillpathtags(path_tags, path);
 
   LOG("getattr '%s'", path);
   
-  res = stat(realpath, stbuf);
-  // if the file is not found, it might be a tag (same as the root directory)
-  if (res < 0 && errno == ENOENT) {
-    // check if the tag exists
-    s = tag_fillpathtags(path_tags, path); // get the tags in the path
-    for (int j = 0; j < s; j++) {
-      if (!findTableEntry(&tag_files, path_tags[j])) {
+  if (!s) { // the path concerns the root folder
+    res = stat(dirpath, stbuf);
+    goto end_getattr;
+  }
+  
+  struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
+  if (f) { // the path concerns a file
+    for (int j = 0; j < s-2; j++) {
+      if (!searchLabel(f->head, path_tags[j])) {
         res = -ENOENT;
         goto end_getattr;
       }
     }
-    res = stat(dirpath, stbuf);
+    char * realpath = malloc(sizeof(char)*(strlen(dirpath)+strlen(path_tags[s-1])+2));
+    realpath = tag_realpath(path);
+    res = stat(realpath, stbuf);
+    free(realpath);
+  }
+  else { // the path concerns a tag folder
+    int h = 0;
+    struct TableEntry *current, *tmp;
+    HASH_ITER(hh, file_tags, current, tmp) {
+      for (int j = 0; j < s-1; j++) {
+        if (!searchLabel(current->head, path_tags[j])) {
+          goto next_getattr;
+        }
+      }
+      h = 1;
+      next_getattr:
+      continue;
+    }
+    if (h) res = stat(dirpath, stbuf);
+    else res = -ENOENT;
   }
   
   end_getattr:
   for(int j = 0; j < s; j++) free(path_tags[j]);
   free(path_tags);
-  free(realpath);
   LOG(" returning %d\n", res);
   return res;
 }
@@ -292,7 +310,7 @@ int tag_unlink(const char* path) {
 int tag_mkdir(const char* path, mode_t mode) {
   int res = 0;
   LOG("mkdir '%s'\n", path);
-  // addTableEntry(&tag_files, (char *)path);
+  addTableEntry(&tag_files, (char *)path);
   // TODO: update the .tags file
   return res;
 }
