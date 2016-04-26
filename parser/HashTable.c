@@ -1,4 +1,3 @@
-
 #include <stdlib.h>  
 #include <stdio.h> 
 #include <string.h>
@@ -24,10 +23,10 @@ struct TableEntry* findTableEntry(struct TableEntry** table, char* name) {
   return entry;
 }
 
+
 void replaceTableEntry(struct TableEntry **table, struct TableEntry *entry){
 	if(entry == NULL)
 		exit(EXIT_FAILURE);
-
 	struct TableEntry *tmp;
   char* name = entry->name;
   HASH_FIND_STR(*table, name, tmp);
@@ -35,6 +34,8 @@ void replaceTableEntry(struct TableEntry **table, struct TableEntry *entry){
   free(tmp);
   HASH_ADD_STR(*table, name, entry);
 }
+
+
 
 void delTableEntry(struct TableEntry** table, char* name) {
   struct TableEntry* entry;
