@@ -86,87 +86,66 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
 }
 
 /* list files within directory */
-static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) 
-{
-  struct dirent *dirent;
+static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+    
+  LOG("readdir '%s'\n", path);
+  
+  int hastags;
   int i = 0;
-  int j = 0;
-  char ** tag_folders = malloc(sizeof(char*)*getTableSize(&tag_files));
+  struct TableEntry *current_file, *tmp;
+  struct Label *current_tag;
+  struct TableEntry *tag_folders = NULL;
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s = tag_fillpathtags(path_tags, path); // get the tags in the path
-  int hastags = 0;
-  int nbfileindir = 0;
   
-  struct TableEntry* f = NULL;
-  struct Label* current = NULL;
-
-  LOG("readdir '%s'\n", path);
-
-  rewinddir(dir);
-  while ((dirent = readdir(dir)) != NULL)
-  {
-    f = findTableEntry(&file_tags, dirent->d_name);
-    current = NULL;
-        
-    // case of a file without tag when in the root folder
-    if (!f && !strcmp(path, "/")) { filler(buf, dirent->d_name, NULL, 0); }
-    // case of a file without tag when not in the root folder
-    else if (!f) { continue; }
+  HASH_ITER(hh, file_tags, current_file, tmp) {
+    // case of the root folder
+    if (!strcmp(path, "/")) { 
+      filler(buf, current_file->name, NULL, 0); 
+    }
     // default case
     else {
       // test if the file has all the tags in the path
       hastags = 1;
-      current = NULL;
-      for (j = 0; j < s; j++) {
+      current_tag = NULL;
+      for (int j = 0; j < s; j++) {
         hastags = 0;
-        LL_FOREACH(f->head, current) {
-          if (!strcmp(current->name, path_tags[j])) {
+        LL_FOREACH(current_file->head, current_tag) {
+          if (!strcmp(current_tag->name, path_tags[j])) {
             hastags = 1;
             break;
           }
         }
         if (!hastags) break;
-        current = NULL;
+        current_tag = NULL;
       }
       if (!hastags) continue;
-      nbfileindir++;
       
       // display the file
-      filler(buf, dirent->d_name, NULL, 0);
+      filler(buf, current_file->name, NULL, 0);
+    }
       
-      // get its tags to create folders
-      current = NULL;
-      LL_FOREACH(f->head, current) {
-        // add only the tags that are not already in the path
-        for (j = 0; j < s; j++) {
-          if (!strcmp(path_tags[j], current->name)) goto next;
-        }
-        // add only once
-        for (j = 0; j < i; j++) {
-          if (!strcmp(tag_folders[j], current->name)) goto next;
-        }
-        tag_folders[i] = malloc(sizeof(char)*strlen(current->name));
-        strcpy(tag_folders[i], current->name);
-        i++;
-        next:
-        continue;
+    // get its tags to create folders
+    current_tag = NULL;
+    LL_FOREACH(current_file->head, current_tag) {
+      // add only the tags that are not already in the path
+      for (int j = 0; j < s; j++) {
+        if (!strcmp(path_tags[j], current_tag->name)) goto next;
       }
+      addTableEntry(&tag_folders, current_tag->name);
+      next:
+      continue;
     }
   }
 
   // display the folders corresponding to the tags 
-  for (j = 0; j < i; j++) {
-    filler(buf, tag_folders[j], NULL, 0);
-    free(tag_folders[j]);
+  HASH_ITER(hh, tag_folders, current_file, tmp) {
+    filler(buf, current_file->name, NULL, 0);
   }
-
-  free(tag_folders);
-  for(j = 0; j < s; j++) free(path_tags[j]);
-  free(path_tags);
   
-  // if there is no file in the directory then it doesn't exist
-  if (nbfileindir == 0) { LOG("no directory\n"); return -ENOENT; }
-
+  delTable(&tag_folders);
+  for(int j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
   return 0;
 }
 
@@ -298,6 +277,15 @@ int main(int argc, char ** argv) {
   parse(tagfilepath, &file_tags, &tag_files);
   free(tagfilepath);
   
+  // complete the file_tags hashtable with the files that don't have a tag
+  struct dirent *dirent;
+  rewinddir(dir);
+  while ((dirent = readdir(dir)) != NULL) {
+    if(!findTableEntry(&file_tags, dirent->d_name)) {
+      addTableEntry(&file_tags, dirent->d_name);
+    }
+  }
+  
   LOG("starting tagfs in %s\n", dirpath);
   err = fuse_main(argc, argv, &tag_oper, NULL);
   LOG("stopped tagfs with return code %d\n", err);
@@ -306,7 +294,6 @@ int main(int argc, char ** argv) {
   free(dirpath);
 
   LOG("\n");
-  
   delTable(&tag_files);
   delTable(&file_tags);
   return err;
