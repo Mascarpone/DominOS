@@ -85,7 +85,7 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   
   struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
   if (f) { // the path concerns a file
-    for (int j = 0; j < s-2; j++) {
+    for (int j = 0; j < s-1; j++) {
       if (!searchLabel(f->head, path_tags[j])) {
         res = -ENOENT;
         goto end_getattr;
@@ -100,7 +100,7 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     int h = 0;
     struct TableEntry *current, *tmp;
     HASH_ITER(hh, file_tags, current, tmp) {
-      for (int j = 0; j < s-1; j++) {
+      for (int j = 0; j < s; j++) {
         if (!searchLabel(current->head, path_tags[j])) {
           goto next_getattr;
         }
