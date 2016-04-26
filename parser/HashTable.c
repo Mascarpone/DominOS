@@ -89,8 +89,10 @@ void delLabel(struct Label** head, char* lname){
 	strcpy(dellike->name, lname);
 	dellike->next = NULL;
 	LL_SEARCH(*head, todel, dellike, labelcmp);
-  LL_DELETE(*head, todel);
-	free(todel);
+	if (todel) { 
+		LL_DELETE(*head, todel); 
+		free(todel);
+	}	
 	free(dellike);
 }
 

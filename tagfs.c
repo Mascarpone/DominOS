@@ -41,7 +41,7 @@ struct TableEntry * tag_files = NULL;
 struct TableEntry * file_tags = NULL;
 
 /*******************
- * File operations
+ * Useful functions
  */
 
 /* get the path of the file in the VFS */
@@ -69,6 +69,10 @@ int tag_fillpathtags(char ** path_tags, const char * path) {
   free(pathcpy);
   return i;
 }
+
+/*******************
+ * Fuse operations
+ */
 
 /* get attributes */
 static int tag_getattr(const char *path, struct stat *stbuf) {
@@ -109,8 +113,13 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
       next_getattr:
       continue;
     }
-    if (h) res = stat(dirpath, stbuf);
-    else res = -ENOENT;
+    
+    if (h) // a file has all the tags
+      res = stat(dirpath, stbuf); 
+    else if (s == 1 && findTableEntry(&tag_files, path_tags[0])) // the tag has no file referencing it
+      res = stat(dirpath, stbuf); 
+    else 
+      res = -ENOENT;
   }
   
   end_getattr:
@@ -170,6 +179,15 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       addTableEntry(&tag_folders, current_tag->name);
       next:
       continue;
+    }
+  }
+  
+  // if we are in the root folder, add the tag that have no files
+  if (!strcmp(path, "/")) { 
+    HASH_ITER(hh, tag_files, current_file, tmp) {
+      if (!countLabels(current_file->head)) {
+        addTableEntry(&tag_folders, current_file->name);
+      }
     }
   }
 
@@ -247,17 +265,27 @@ int tag_link(const char* from, const char* to) {
   int s = tag_fillpathtags(path_tags, to); // get the tags in the path
   
   // the last string of path_tags is the name of the file
-  if (findTableEntry(&file_tags, path_tags[s-1])) {
-    for (int j = 0; j < s-1; j++) {
-      // update the data structures
-      addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
-      addTableEntry(&tag_files, path_tags[j]);
-      addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
-      // TODO: update the .tags file
+  if (!strcmp(from+1, path_tags[s-1])) {
+    if (findTableEntry(&file_tags, path_tags[s-1])) {
+      for (int j = 0; j < s-1; j++) {
+        if (findTableEntry(&tag_files, path_tags[j])) {
+          // update the data structures
+          addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
+          addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
+        }
+        else {
+          res = -ENOENT;
+          continue;
+        }
+      }
+    }
+    else {
+      res = -ENOENT;
     }
   }
   else {
-    res = -ENOENT;
+    LOG("cannot rename a file\n");
+    res = -EPERM;
   }
   
   for(int j = 0; j < s; j++) free(path_tags[j]);
@@ -270,7 +298,34 @@ int tag_link(const char* from, const char* to) {
  */
 int tag_rename(const char* from, const char* to) {
   int res = 0;
+  
   LOG("rename '%s'->'%s'\n", from, to);
+  
+  char ** path_tags_from = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_from = tag_fillpathtags(path_tags_from, from);
+  char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_to = tag_fillpathtags(path_tags_to, to);
+  
+  if (s_from == 2 && s_to == 2 && !strcmp(path_tags_to[1], path_tags_from[1])) {
+    struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[1]);
+    
+    struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[0]);
+    addLabel(&t_to->head, path_tags_to[1]);
+    addLabel(&f->head, path_tags_to[0]);
+    
+    struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[0]);
+    delLabel(&t_from->head, path_tags_from[1]);
+    delLabel(&f->head, path_tags_from[0]);  
+  }
+  else {
+    LOG("rename syntax not corresponding to the protocole\n");
+    res = -EPERM;
+  }
+  
+  for(int j = 0; j < s_to; j++) free(path_tags_to[j]);
+  free(path_tags_to);
+  for(int j = 0; j < s_from; j++) free(path_tags_from[j]);
+  free(path_tags_from);
   return res;
 }
 
@@ -279,7 +334,28 @@ int tag_rename(const char* from, const char* to) {
  */
 int tag_unlink(const char* path) {
   int res = 0;
+  
   LOG("unlink '%s'\n", path);
+  
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+  
+  if (s >= 2) {
+    struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
+    struct TableEntry *t = NULL;
+    for (int j = 0; j < s-1; j++) {
+      t = findTableEntry(&tag_files, path_tags[j]);
+      delLabel(&t->head, path_tags[s-1]);
+      delLabel(&f->head, path_tags[j]);
+    }
+  } 
+  else {
+    LOG("cannot remove file in the root folder\n");
+    res = -EPERM;
+  } 
+  
+  for(int j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
   return res;
 }
 
@@ -289,8 +365,7 @@ int tag_unlink(const char* path) {
 int tag_mkdir(const char* path, mode_t mode) {
   int res = 0;
   LOG("mkdir '%s'\n", path);
-  addTableEntry(&tag_files, (char *)path);
-  // TODO: update the .tags file
+  addTableEntry(&tag_files, (char *)(path+1));
   return res;
 }
 
@@ -299,7 +374,12 @@ int tag_mkdir(const char* path, mode_t mode) {
  */
 int tag_rmdir(const char* path) {
   int res = 0;
+  struct TableEntry *current, *tmp;
   LOG("rmdir '%s'\n", path);
+  delTableEntry(&tag_files, (char *)(path+1));
+  HASH_ITER(hh, file_tags, current, tmp) {
+    delLabel(&current->head, (char *)(path+1));
+  }
   return res;
 }
 

@@ -13,7 +13,7 @@ mv mnt/ecole2/ipb.jpeg mnt/ecole/
 ln mnt/marmotte.jpeg mnt/gentil/
 rm mnt/mechant/rabbit.jpeg
 rm mnt/monty/animal/rabbit.jpeg
-mv mnt/mechant/coyote.jpeg mnt/gentil/cartoon/coyote.jpeg
+mv mnt/mechant/coyote.jpeg mnt/gentil/coyote.jpeg
 
 fusermount -u mnt
 
@@ -25,7 +25,7 @@ hobbit
 
 [coyote.jpeg]
 animal
-mechant
+gentil
 
 [gru.jpeg]
 gentil
@@ -44,7 +44,7 @@ monty
 EOF
 ) > check_$$
 
-diff $PWD/images/.tags.new check_$$ > diff_$$
+diff $PWD/images/.tags check_$$ > diff_$$
 if test -s diff_$$
 then
     echo "Test ... Failure"
