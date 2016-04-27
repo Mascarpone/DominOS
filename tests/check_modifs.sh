@@ -20,31 +20,27 @@ fusermount -u mnt
 (cat <<EOF
 [bilbo.jpeg]
 cartoon
-gentil
 hobbit
+gentil
 
 [coyote.jpeg]
-animal
 gentil
+animal
 
 [gru.jpeg]
 gentil
 
+[marmotte.jpeg]
+gentil
+animal
+
 [ipb.jpeg]
 ecole
-
-[marmotte.jpeg]
-animal
-gentil
-
-[rabbit.jpeg]
-animal
-monty
 
 EOF
 ) > check_$$
 
-diff $PWD/images/.tags check_$$ > diff_$$
+diff $PWD/images/.tags.new check_$$ > diff_$$
 if test -s diff_$$
 then
     echo "Test ... Failure"

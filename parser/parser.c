@@ -62,6 +62,25 @@ void parse(char* fName, struct TableEntry** file_tags, struct TableEntry** tag_f
   fclose(file);
 }
 
+void updateTags(char *fname, struct TableEntry** file_tags) {
+  FILE *f = fopen(fname, "w+");
+  
+  struct TableEntry *current, *tmp;
+  struct Label *l;
+  HASH_ITER(hh, *file_tags, current, tmp) {
+    if (countLabels(current->head) > 0) {
+      fprintf(f, "[%s]\n", current->name);
+      l = NULL;
+      LL_FOREACH(current->head, l) {
+        fprintf(f, "%s\n", l->name);
+      }
+      fprintf(f, "\n");
+    }
+  }
+  
+  fclose(f);
+}
+
 // void main(){
 //   char* fName = ".tag";
 //   struct TableEntry* file_tags = NULL;

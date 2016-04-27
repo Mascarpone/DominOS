@@ -37,6 +37,7 @@ FILE *mylog;
  
 static DIR *dir;
 static char *dirpath;
+static char *tagpath;
 struct TableEntry * tag_files = NULL;
 struct TableEntry * file_tags = NULL;
 
@@ -80,7 +81,7 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s = tag_fillpathtags(path_tags, path);
 
-  LOG("getattr '%s'", path);
+  LOG("getattr '%s'\n", path);
   
   if (!s) { // the path concerns the root folder
     res = stat(dirpath, stbuf);
@@ -125,7 +126,6 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   end_getattr:
   for(int j = 0; j < s; j++) free(path_tags[j]);
   free(path_tags);
-  LOG(" returning %d\n", res);
   return res;
 }
 
@@ -288,6 +288,9 @@ int tag_link(const char* from, const char* to) {
     res = -EPERM;
   }
   
+  // update the ./tags file
+  updateTags(tagpath, &file_tags);
+  
   for(int j = 0; j < s; j++) free(path_tags[j]);
   free(path_tags);
   return res;
@@ -322,6 +325,9 @@ int tag_rename(const char* from, const char* to) {
     res = -EPERM;
   }
   
+  // update the ./tags file
+  updateTags(tagpath, &file_tags);
+  
   for(int j = 0; j < s_to; j++) free(path_tags_to[j]);
   free(path_tags_to);
   for(int j = 0; j < s_from; j++) free(path_tags_from[j]);
@@ -354,6 +360,9 @@ int tag_unlink(const char* path) {
     res = -EPERM;
   } 
   
+  // update the ./tags file
+  updateTags(tagpath, &file_tags);
+  
   for(int j = 0; j < s; j++) free(path_tags[j]);
   free(path_tags);
   return res;
@@ -380,6 +389,10 @@ int tag_rmdir(const char* path) {
   HASH_ITER(hh, file_tags, current, tmp) {
     delLabel(&current->head, (char *)(path+1));
   }
+  
+  // update the ./tags file
+  updateTags(tagpath, &file_tags);
+  
   return res;
 }
 
@@ -416,33 +429,36 @@ int main(int argc, char ** argv) {
   argc--;
 
   mylog = fopen(LOGFILE, "a");
-  LOG("\n");
   
   // parse the .tags file to init global hash tables
-  char *tagfilepath = malloc(sizeof(char)*(strlen(dirpath)+7));
+  char *tagfilepath = malloc(sizeof(char)*(strlen(dirpath)+11));
   strcpy(tagfilepath, dirpath);
   strcat(tagfilepath, "/.tags"); 
   parse(tagfilepath, &file_tags, &tag_files);
-  free(tagfilepath);
+  
+  // set the global variable indicating the path of the ./tags that that must be updated
+  strcat(tagfilepath, ".new");
+  tagpath = tagfilepath;
   
   // complete the file_tags hashtable with the files that don't have a tag
   struct dirent *dirent;
   rewinddir(dir);
   while ((dirent = readdir(dir)) != NULL) {
-    if(!findTableEntry(&file_tags, dirent->d_name)) {
-      addTableEntry(&file_tags, dirent->d_name);
+    if (dirent->d_type == DT_REG && strncmp(dirent->d_name, ".tags", 5)) {
+      if(!findTableEntry(&file_tags, dirent->d_name)) {
+        addTableEntry(&file_tags, dirent->d_name);
+      }
     }
   }
   
-  LOG("starting tagfs in %s\n", dirpath);
+  LOG("\nstarting tagfs in %s\n", dirpath);
   umask(0);
   err = fuse_main(argc, argv, &tag_oper, NULL);
-  LOG("stopped tagfs with return code %d\n", err);
+  LOG("stopped tagfs with return code %d\n\n", err);
 
   closedir(dir);
   free(dirpath);
-
-  LOG("\n");
+  free(tagfilepath);
   delTable(&tag_files);
   delTable(&file_tags);
   return err;
