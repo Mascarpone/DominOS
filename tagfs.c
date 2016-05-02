@@ -90,7 +90,6 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
   
   struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
   if (f) { // the path concerns a file
-    LOG("Vous êtes ici\n");
     for (int j = 0; j < s-1; j++) {
       if (!searchLabel(f->head, path_tags[j])) {
         res = -ENOENT;
@@ -103,7 +102,6 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     free(realpath);
   }
   else { // the path concerns a tag folder
-    LOG("Vous êtes là\n");
     int h = 0;
     struct TableEntry *current, *tmp;
     HASH_ITER(hh, file_tags, current, tmp) {
@@ -122,13 +120,14 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
       res = stat(dirpath, stbuf); 
     else if (s == 1 && findTableEntry(&tag_files, path_tags[0])) // the tag has no file referencing it
       res = stat(dirpath, stbuf); 
-    else if(s==1)
+    else //if(s==1)
     { 
-      addTableEntry(&tag_files, path_tags[0]);
+      for(int i=0;i<s;i++)
+        addTableEntry(&tag_files, path_tags[i]);
       res = stat(dirpath,stbuf);
     }
-    else
-      res=-ENOENT;
+    //else
+    //  res=-ENOENT;
   }
   
   end_getattr:
@@ -194,7 +193,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   if (!strcmp(path, "/")) { 
     HASH_ITER(hh, tag_files, current_file, tmp) {
       if (!countLabels(current_file->head)) {
-        addTableEntry(&tag_folders, current_file->name);
+        //addTableEntry(&tag_folders, current_file->name);
       }
     }
   }
