@@ -32,6 +32,12 @@ FILE *mylog;
 #include "parser/parser.h"
 
 /*******************
+ * ioctl shared header
+ */
+
+#include "tagioctl.h"
+
+/*******************
  * Globals
  */
  
@@ -410,6 +416,47 @@ int tag_rmdir(const char* path) {
   return res;
 }
 
+/* handle ioctl system call 
+ * return the chained list of tags corresponding to the file
+ */
+int tag_ioctl(const char* path, int cmd, void* arg, struct fuse_file_info* fi, unsigned int flags, void* data) {
+  int res = 0;
+  LOG("ioctl '%s'\n", path);
+      
+  // check if the request is handled
+  switch(cmd) {
+    case IOC_GET_TAGS:
+    {
+      // get the name of the file
+      char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+      int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+      
+      // find the file in file_tags
+      struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
+      
+      // fill the data structure
+      struct Label *cur;
+      int i = 0;
+      LL_FOREACH(f->head, cur) strcpy(((struct tagslist*)data)->tags[i++], cur->name);
+      ((struct tagslist*)data)->tags_nb = i;
+      
+      for(int j = 0; j < s; j++) free(path_tags[j]);
+      free(path_tags);
+      
+      res = 0;
+      break;
+    }
+    default:
+    {
+      LOG("ioctl command not handled\n");
+      res = -EINVAL;
+      break;
+    }
+  }
+  
+  return res;
+}
+
 static struct fuse_operations tag_oper = {
   .getattr = tag_getattr,
   .readdir = tag_readdir,
@@ -419,6 +466,7 @@ static struct fuse_operations tag_oper = {
   .rename = tag_rename,
   .link = tag_link,
   .read = tag_read,
+  .ioctl = tag_ioctl,
 };
 
 /*******************
