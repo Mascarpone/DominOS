@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <signal.h>
 
 /*******************
  * Logs
@@ -560,7 +561,9 @@ int main(int argc, char ** argv) {
   int flags = fcntl(inotifypipe[0], F_GETFL, 0);
   fcntl(inotifypipe[0], F_SETFL, flags | O_NONBLOCK); // set read non blocking 
   
-  switch (fork()) {
+  int pid = fork();
+  
+  switch (pid) {
     case -1:
     {
       LOG("\ncouldn't fork\n");
@@ -571,14 +574,14 @@ int main(int argc, char ** argv) {
       close(inotifypipe[0]);
       
       // read events with inotify API
-      int inotifyfd;
+      int inotifyfd, wd;
       ssize_t numRead;
       struct inotify_event *event;
       char buf[1024];
       
       inotifyfd = inotify_init();
       if (inotifyfd == -1) { LOG("error: inotify_init()\n"); break; }
-      if (inotify_add_watch(inotifyfd, dirpath, IN_ALL_EVENTS) == -1) { LOG("error: inotify_add_watch()\n"); break; }
+      if ((wd = inotify_add_watch(inotifyfd, dirpath, IN_ALL_EVENTS)) == -1) { LOG("error: inotify_add_watch()\n"); break; }
       while(1) {
           numRead = read(inotifyfd, buf, 1024);
           if (numRead <= 0) { LOG("error: read from inotifyfd\n"); break; }
@@ -594,6 +597,8 @@ int main(int argc, char ** argv) {
             }
           }
       }
+      inotify_rm_watch(inotifyfd, wd);
+      close(inotifyfd);
       break;
     }
     default:
@@ -604,6 +609,8 @@ int main(int argc, char ** argv) {
       umask(0);
       err = fuse_main(argc, argv, &tag_oper, NULL);
       LOG("stopped tagfs with return code %d\n\n", err);
+      
+      kill(pid, SIGINT);
       break;
     }
   }
