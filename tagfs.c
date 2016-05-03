@@ -38,6 +38,16 @@ FILE *mylog;
 #include "tagioctl.h"
 
 /*******************
+ * inotify header
+ */
+
+#include <sys/inotify.h>
+#define SEP "\n"
+#define NEWFILE "A"
+#define DELFILE "D"
+#define PIPEBUFLEN 1024
+
+/*******************
  * Globals
  */
  
@@ -46,6 +56,7 @@ static char *dirpath;
 static char *tagpath;
 struct TableEntry * tag_files = NULL;
 struct TableEntry * file_tags = NULL;
+int inotifypipe[2];
 
 /*******************
  * Useful functions
@@ -77,12 +88,59 @@ int tag_fillpathtags(char ** path_tags, const char * path) {
   return i;
 }
 
+/* send a message according to the protocole <op>\n<filename>
+ * through the inotifypipe
+ */
+void inotify_write(const char op[1], char *filename) {
+  char * msg = malloc(sizeof(char)*(strlen(filename)+3));
+  strcpy(msg, op);
+  strcat(msg, SEP);
+  strcat(msg, filename);
+  strcat(msg, SEP);
+  write(inotifypipe[1], msg, PIPEBUFLEN);
+  free(msg);
+}
+
+/* update the data structure according to the pipe
+ * protocole: <op>\n<filename> ...
+ * op in A (add), D (delete)
+ */
+void inotify_read() {
+  char buf[PIPEBUFLEN];
+  while (read(inotifypipe[0], buf, PIPEBUFLEN) > 0) {
+      char * tok = strtok(buf, SEP);
+      char op[1];
+      while(tok != NULL) {
+        strcpy(op, tok);
+        tok = strtok(NULL, SEP);
+        if (!strcmp(op, NEWFILE)) {
+          addTableEntry(&file_tags, tok);
+        }
+        else if (!strcmp(op, DELFILE)) {
+          struct TableEntry *current, *tmp;
+          if (findTableEntry(&file_tags, tok)) { // just a security
+            delTableEntry(&file_tags, tok);
+            HASH_ITER(hh, tag_files, current, tmp) {
+              delLabel(&current->head, tok);
+            }
+          }
+        }
+        tok = strtok(NULL, SEP);
+      }
+      updateTags(tagpath, &file_tags);
+  }
+}
+
 /*******************
  * Fuse operations
  */
 
 /* get attributes */
 static int tag_getattr(const char *path, struct stat *stbuf) {
+  
+  // check if modifications have been done in the source directory
+  inotify_read();
+  
   int res = 0;
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s = tag_fillpathtags(path_tags, path);
@@ -126,14 +184,12 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
       res = stat(dirpath, stbuf); 
     else if (s == 1 && findTableEntry(&tag_files, path_tags[0])) // the tag has no file referencing it
       res = stat(dirpath, stbuf); 
-    else //if(s==1)
+    else 
     { 
       for(int i=0;i<s;i++)
         addTableEntry(&tag_files, path_tags[i]);
       res = stat(dirpath,stbuf);
     }
-    //else
-    //  res=-ENOENT;
   }
   
   end_getattr:
@@ -144,7 +200,7 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
 
 /* list files within directory */
 static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
-    
+      
   LOG("readdir '%s'\n", path);
   
   int hastags;
@@ -192,15 +248,6 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       addTableEntry(&tag_folders, current_tag->name);
       next:
       continue;
-    }
-  }
-  
-  // if we are in the root folder, add the tag that have no files
-  if (!strcmp(path, "/")) { 
-    HASH_ITER(hh, tag_files, current_file, tmp) {
-      if (!countLabels(current_file->head)) {
-        //addTableEntry(&tag_folders, current_file->name);
-      }
     }
   }
 
@@ -286,11 +333,6 @@ int tag_link(const char* from, const char* to) {
           addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
           addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
         }
-        else {
-          //addTableEntry(&tag_files, path_tags[j]);	  
-	  //j--;
-          continue;
-        }
       }
     }
     else {
@@ -369,9 +411,8 @@ int tag_unlink(const char* path) {
       delLabel(&f->head, path_tags[j]);
       if(countLabels(t->head)==0)
       {
-	LOG("%s",path_tags[j]);
-	delTableEntry(&tag_files,path_tags[j]);
-	//tag_rmdir(path_tags[j]);
+	       LOG("%s",path_tags[j]);
+         delTableEntry(&tag_files,path_tags[j]);
       }
     }
   } 
@@ -513,15 +554,64 @@ int main(int argc, char ** argv) {
     }
   }
   
-  LOG("\nstarting tagfs in %s\n", dirpath);
-  umask(0);
-  err = fuse_main(argc, argv, &tag_oper, NULL);
-  LOG("stopped tagfs with return code %d\n\n", err);
-
+  // create a pipe to communicate between the son and the father processes with a certain protocole
+  // NOTE: see protocole in inotify_update() function
+  pipe(inotifypipe);
+  int flags = fcntl(inotifypipe[0], F_GETFL, 0);
+  fcntl(inotifypipe[0], F_SETFL, flags | O_NONBLOCK); // set read non blocking 
+  
+  switch (fork()) {
+    case -1:
+    {
+      LOG("\ncouldn't fork\n");
+      break;
+    }
+    case 0:
+    {
+      close(inotifypipe[0]);
+      
+      // read events with inotify API
+      int inotifyfd;
+      ssize_t numRead;
+      struct inotify_event *event;
+      char buf[1024];
+      
+      inotifyfd = inotify_init();
+      if (inotifyfd == -1) { LOG("error: inotify_init()\n"); break; }
+      if (inotify_add_watch(inotifyfd, dirpath, IN_ALL_EVENTS) == -1) { LOG("error: inotify_add_watch()\n"); break; }
+      while(1) {
+          numRead = read(inotifyfd, buf, 1024);
+          if (numRead <= 0) { LOG("error: read from inotifyfd\n"); break; }
+          event = (struct inotify_event *) buf;
+          if (!(event->mask & IN_ISDIR)) { // subdirectories are not handled
+            if ((event->mask & IN_CREATE) || (event->mask & IN_MOVED_TO)) { // new file
+              LOG("inotify: newfile added '%s'\n", event->name);
+              inotify_write(NEWFILE, event->name);
+            }
+            if ((event->mask & IN_DELETE) || (event->mask & IN_MOVED_FROM)) { // deleted file
+              LOG("inotify: file deleted '%s'\n", event->name);
+              inotify_write(DELFILE, event->name);
+            }
+          }
+      }
+      break;
+    }
+    default:
+    {
+      close(inotifypipe[1]);
+      
+      LOG("\nstarting tagfs in %s\n", dirpath);
+      umask(0);
+      err = fuse_main(argc, argv, &tag_oper, NULL);
+      LOG("stopped tagfs with return code %d\n\n", err);
+      break;
+    }
+  }
+  
+  delTable(&tag_files);
+  delTable(&file_tags);
   closedir(dir);
   free(dirpath);
   free(tagfilepath);
-  delTable(&tag_files);
-  delTable(&file_tags);
   return err;
 }
