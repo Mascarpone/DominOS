@@ -173,7 +173,6 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
       for (int j = 0; j < s; j++) {
         if (!searchLabel(current->head, path_tags[j])) {
           goto next_getattr;
-          
         }
       }
       h = 1;
@@ -322,17 +321,20 @@ int tag_link(const char* from, const char* to) {
   
   LOG("link '%s'->'%s'\n", from, to);
   
-  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = tag_fillpathtags(path_tags, to); // get the tags in the path
+  char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_to = tag_fillpathtags(path_tags_to, to); // get the tags in the path
+  
+  char ** path_tags_from = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_from = tag_fillpathtags(path_tags_from, from); // get the tags in the path
   
   // the last string of path_tags is the name of the file
-  if (!strcmp(from+1, path_tags[s-1])) {
-    if (findTableEntry(&file_tags, path_tags[s-1])) {
-      for (int j = 0; j < s-1; j++) {
-        if (findTableEntry(&tag_files, path_tags[j])) {
+  if (!strcmp(path_tags_from[s_from-1], path_tags_to[s_to-1])) {
+    if (findTableEntry(&file_tags, path_tags_from[s_from-1])) {
+      for (int j = 0; j < s_to-1; j++) {
+        if (findTableEntry(&tag_files, path_tags_to[j])) {
           // update the data structures
-          addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
-          addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
+          addEntryLabel(&file_tags, path_tags_from[s_from-1], path_tags_to[j]);
+          addEntryLabel(&tag_files, path_tags_to[j], path_tags_from[s_from-1]);
         }
       }
     }
@@ -348,8 +350,10 @@ int tag_link(const char* from, const char* to) {
   // update the ./tags file
   updateTags(tagpath, &file_tags);
   
-  for(int j = 0; j < s; j++) free(path_tags[j]);
-  free(path_tags);
+  for(int j = 0; j < s_to; j++) free(path_tags_to[j]);
+  free(path_tags_to);
+  for(int j = 0; j < s_from; j++) free(path_tags_from[j]);
+  free(path_tags_from);
   return res;
 }
 
