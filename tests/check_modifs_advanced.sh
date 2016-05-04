@@ -1,8 +1,5 @@
 #/bin/bash
 
-export LANG=C
-export LC_ALL=C
-
 mkdir -p mnt
 ./tagfs $PWD/images $PWD/mnt
 sleep 1
@@ -70,10 +67,7 @@ else
 fi
 rm -f check_intermediate_$$ diff_intermediate_$$
 
-# check that mkdir/rmdir still functions
-mkdir mnt/bar
-ln mnt/bilbo.jpeg mnt/bar/
-mkdir mnt/baz
+# check that rmdir still functions
 ln mnt/bilbo.jpeg mnt/baz/
 ln mnt/gru.jpeg mnt/baz/
 rmdir mnt/baz
@@ -83,19 +77,18 @@ fusermount -u mnt
 # check that the final .tags.new file is correct
 (cat <<EOF
 [rabbit.jpeg]
-animal
 monty
+animal
 
 [bilbo.jpeg]
-gentil
-hobbit
 cartoon
-bar
+hobbit
+gentil
 
 [coyote.jpeg]
-animal
-gentil
 cartoon
+gentil
+animal
 
 [gru.jpeg]
 gentil
@@ -112,9 +105,9 @@ EOF
 diff $PWD/images/.tags.new check_final_$$ > diff_final_$$
 if test -s diff_final_$$
 then
-    echo "Test mkdir/rmdir ... Failed"
+    echo "Test rmdir ... Failed"
     cat diff_final_$$
 else
-    echo "Test mkdir/rmdir ... Passed"
+    echo "Test rmdir ... Passed"
 fi
 rm -f check_final_$$ diff_final_$$
