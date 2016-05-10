@@ -4,3 +4,7 @@
 .tags.new
 .nfs*
 tagfs
+printtags
+testparser
+testperfs
+

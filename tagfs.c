@@ -16,8 +16,6 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <signal.h>
-#include <regex.h>
-
 
 /*******************
 * Logs
@@ -153,16 +151,13 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     res = stat(dirpath, stbuf);
     goto end_getattr;
   }
-  struct Label *current_tag;
+  
   struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
   if (f) { // the path concerns a file
-    
     for (int j = 0; j < s-1; j++) {
-      LL_FOREACH(f->head, current_tag) {
-        if (regexec(regex+j, current_tag->name, 0, NULL, 0)) {
-          res = -ENOENT;
-          goto end_getattr;
-        }
+      if (!searchLabel(f->head, path_tags[j])) {
+        res = -ENOENT;
+        goto end_getattr;
       }
     }
     char * realpath = malloc(sizeof(char)*(strlen(dirpath)+strlen(path_tags[s-1])+2));
@@ -171,15 +166,12 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     free(realpath);
   }
   else { // the path concerns a tag folder
-    
     int h = 0;
     struct TableEntry *current, *tmp;
     HASH_ITER(hh, file_tags, current, tmp) {
       for (int j = 0; j < s; j++) {
-        LL_FOREACH(current->head, current_tag) {
-          if (regexec(regex+j, current_tag->name, 0, NULL, 0)) {
-            goto next_getattr;
-          }
+        if (!searchLabel(current->head, path_tags[j])) {
+          goto next_getattr;
         }
       }
       h = 1;
@@ -234,7 +226,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       for (int j = 0; j < s; j++) {
         hastags = 0;
         LL_FOREACH(current_file->head, current_tag) {
-          if (!regexec(regex+j, current_tag->name, 0, NULL, 0)) {
+          if (!strcmp(current_tag->name, path_tags[j])) {
             hastags = 1;
             break;
           }
@@ -331,18 +323,18 @@ int tag_link(const char* from, const char* to) {
   
   LOG("link '%s'->'%s'\n", from, to);
   
-  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = fillpathtags(path_tags, to); // get the tags in the path
+  char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_to = fillpathtags(path_tags_to, to);
+  char ** path_tags_from = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s_from = fillpathtags(path_tags_from, from);
   
   // the last string of path_tags is the name of the file
-  if (!strcmp(from+1, path_tags[s-1])) {
-    if (findTableEntry(&file_tags, path_tags[s-1])) {
-      for (int j = 0; j < s-1; j++) {
-        if (findTableEntry(&tag_files, path_tags[j])) {
-          // update the data structures
-          addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
-          addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
-        }
+  if (!strcmp(path_tags_from[s_from-1], path_tags_to[s_to-1])) {
+    if (findTableEntry(&file_tags, path_tags_to[s_to-1])) {
+      for (int j = 0; j < s_to-1; j++) {
+        // update the data structures
+        addEntryLabel(&file_tags, path_tags_to[s_to-1], path_tags_to[j]);
+        addEntryLabel(&tag_files, path_tags_to[j], path_tags_to[s_to-1]);
       }
     }
     else {
@@ -357,8 +349,10 @@ int tag_link(const char* from, const char* to) {
   // update the ./tags file
   updateTags(tagpath, &file_tags);
   
-  for(int j = 0; j < s; j++) free(path_tags[j]);
-  free(path_tags);
+  for(int j = 0; j < s_to; j++) free(path_tags_to[j]);
+  free(path_tags_to);
+  for(int j = 0; j < s_from; j++) free(path_tags_from[j]);
+  free(path_tags_from);
   return res;
 }
 
@@ -375,16 +369,22 @@ int tag_rename(const char* from, const char* to) {
   char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s_to = fillpathtags(path_tags_to, to);
   
-  if (s_from == 2 && s_to == 2 && !strcmp(path_tags_to[1], path_tags_from[1])) {
+  if (!strcmp(path_tags_to[s_to-1], path_tags_from[s_from-1])) {
     struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[1]);
     
-    struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[0]);
-    addLabel(&t_to->head, path_tags_to[1]);
-    addLabel(&f->head, path_tags_to[0]);
+    for (int j = 0; j < s_to-1; j++) {
+      struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[j]);
+      if (!t_to) t_to = addTableEntry(&tag_files, path_tags_to[j]);
+      addLabel(&t_to->head, path_tags_to[s_to-1]);
+      addLabel(&f->head, path_tags_to[j]);
+    }
     
-    struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[0]);
-    delLabel(&t_from->head, path_tags_from[1]);
-    delLabel(&f->head, path_tags_from[0]);  
+    for (int j = 0; j < s_from-1; j++) {
+      struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[j]);
+      delLabel(&t_from->head, path_tags_from[s_from-1]);
+      if(countLabels(t_from->head) == 0) delTableEntry(&tag_files, path_tags_from[j]);
+      delLabel(&f->head, path_tags_from[j]); 
+    } 
   }
   else {
     LOG("rename syntax not corresponding to the protocole\n");
@@ -418,11 +418,7 @@ int tag_unlink(const char* path) {
       t = findTableEntry(&tag_files, path_tags[j]);
       delLabel(&t->head, path_tags[s-1]);
       delLabel(&f->head, path_tags[j]);
-      if(countLabels(t->head)==0)
-      {
-        LOG("%s",path_tags[j]);
-        delTableEntry(&tag_files,path_tags[j]);
-      }
+      if(countLabels(t->head)==0) delTableEntry(&tag_files,path_tags[j]);
     }
   } 
   else {
