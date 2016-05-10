@@ -436,7 +436,6 @@ int tag_read(const char *path, char *buffer, size_t len, off_t off, struct fuse_
  		LOG("rename syntax not corresponding to the protocole\n");
  		res = -EPERM;
  	}
-
   // update the ./tags file
  	updateTags(tagpath, &file_tags);
 
