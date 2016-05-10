@@ -1,3 +1,10 @@
 *.DS_Store
 *.o
+*.log
+.tags.new
+.nfs*
 tagfs
+printtags
+testparser
+testperfs
+
