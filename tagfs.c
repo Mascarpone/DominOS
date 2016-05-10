@@ -203,6 +203,9 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       
   LOG("readdir '%s'\n", path);
   
+  // check if modifications have been done in the source directory
+  inotify_read();
+  
   int hastags;
   int i = 0;
   struct TableEntry *current_file, *tmp;
