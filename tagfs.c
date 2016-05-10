@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2016 dominOS. All rights reserved.
- * File System by gcombes001, hdodelin, ohayak and flevern.
- */
+* Copyright (c) 2016 dominOS. All rights reserved.
+* File System by gcombes001, hdodelin, ohayak and flevern.
+*/
 
 #define _GNU_SOURCE
 #define FUSE_USE_VERSION 26
@@ -16,31 +16,33 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <signal.h>
+#include <regex.h>
+
 
 /*******************
- * Logs
- */
+* Logs
+*/
 
 #define LOGFILE "tagfs.log"
 FILE *mylog;
 #define LOG(args...) do { fprintf(mylog, args); fflush(mylog); } while (0)
 
 /*******************
- * Parser 
- */
+* Parser 
+*/
 
 #include "parser/HashTable.h"
 #include "parser/parser.h"
 
 /*******************
- * ioctl shared header
- */
+* ioctl shared header
+*/
 
 #include "tagioctl.h"
 
 /*******************
- * inotify header
- */
+* inotify header
+*/
 
 #include <sys/inotify.h>
 #define SEP "\n"
@@ -49,9 +51,9 @@ FILE *mylog;
 #define PIPEBUFLEN 1024
 
 /*******************
- * Globals
- */
- 
+* Globals
+*/
+
 static DIR *dir;
 static char *dirpath;
 static char *tagpath;
@@ -60,19 +62,19 @@ struct TableEntry * file_tags = NULL;
 int inotifypipe[2];
 
 /*******************
- * Useful functions
- */
+* Useful functions
+*/
 
 /* get the path of the file in the VFS */
 char * tag_realpath(const char *path) {
-   char *realpath;
-   char *lastslash = strrchr(path, '/');
-   asprintf(&realpath, "%s/%s", dirpath, (lastslash == NULL) ? "" : lastslash + 1);
-   return realpath;
+  char *realpath;
+  char *lastslash = strrchr(path, '/');
+  asprintf(&realpath, "%s/%s", dirpath, (lastslash == NULL) ? "" : lastslash + 1);
+  return realpath;
 }
 
 /* get the tags in the path into the path_tags table */
-int tag_fillpathtags(char ** path_tags, const char * path) {
+int fillpathtags(char ** path_tags, const char * path) {
   int i = 0;
   char * pathcpy = malloc(sizeof(char)*strlen(path));
   strcpy(pathcpy, path);
@@ -90,8 +92,8 @@ int tag_fillpathtags(char ** path_tags, const char * path) {
 }
 
 /* send a message according to the protocole <op>\n<filename>
- * through the inotifypipe
- */
+* through the inotifypipe
+*/
 void inotify_write(const char op[1], char *filename) {
   char * msg = malloc(sizeof(char)*(strlen(filename)+3));
   strcpy(msg, op);
@@ -103,62 +105,64 @@ void inotify_write(const char op[1], char *filename) {
 }
 
 /* update the data structure according to the pipe
- * protocole: <op>\n<filename> ...
- * op in A (add), D (delete)
- */
+* protocole: <op>\n<filename> ...
+* op in A (add), D (delete)
+*/
 void inotify_read() {
   char buf[PIPEBUFLEN];
   while (read(inotifypipe[0], buf, PIPEBUFLEN) > 0) {
-      char * tok = strtok(buf, SEP);
-      char op[1];
-      while(tok != NULL) {
-        strcpy(op, tok);
-        tok = strtok(NULL, SEP);
-        if (!strcmp(op, NEWFILE)) {
-          addTableEntry(&file_tags, tok);
-        }
-        else if (!strcmp(op, DELFILE)) {
-          struct TableEntry *current, *tmp;
-          if (findTableEntry(&file_tags, tok)) { // just a security
-            delTableEntry(&file_tags, tok);
-            HASH_ITER(hh, tag_files, current, tmp) {
-              delLabel(&current->head, tok);
-            }
+    char * tok = strtok(buf, SEP);
+    char op[1];
+    while(tok != NULL) {
+      strcpy(op, tok);
+      tok = strtok(NULL, SEP);
+      if (!strcmp(op, NEWFILE)) {
+        addTableEntry(&file_tags, tok);
+      }
+      else if (!strcmp(op, DELFILE)) {
+        struct TableEntry *current, *tmp;
+        if (findTableEntry(&file_tags, tok)) { // just a security
+          delTableEntry(&file_tags, tok);
+          HASH_ITER(hh, tag_files, current, tmp) {
+            delLabel(&current->head, tok);
           }
         }
-        tok = strtok(NULL, SEP);
       }
-      updateTags(tagpath, &file_tags);
+      tok = strtok(NULL, SEP);
+    }
+    updateTags(tagpath, &file_tags);
   }
 }
 
 /*******************
- * Fuse operations
- */
+* Fuse operations
+*/
 
 /* get attributes */
 static int tag_getattr(const char *path, struct stat *stbuf) {
+  LOG("getattr '%s'\n", path);
   
   // check if modifications have been done in the source directory
   inotify_read();
   
   int res = 0;
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = tag_fillpathtags(path_tags, path);
-
-  LOG("getattr '%s'\n", path);
+  int s = fillpathtags(path_tags, path);
   
   if (!s) { // the path concerns the root folder
     res = stat(dirpath, stbuf);
     goto end_getattr;
   }
-  
+  struct Label *current_tag;
   struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
   if (f) { // the path concerns a file
+    
     for (int j = 0; j < s-1; j++) {
-      if (!searchLabel(f->head, path_tags[j])) {
-        res = -ENOENT;
-        goto end_getattr;
+      LL_FOREACH(f->head, current_tag) {
+        if (regexec(regex+j, current_tag->name, 0, NULL, 0)) {
+          res = -ENOENT;
+          goto end_getattr;
+        }
       }
     }
     char * realpath = malloc(sizeof(char)*(strlen(dirpath)+strlen(path_tags[s-1])+2));
@@ -167,12 +171,15 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     free(realpath);
   }
   else { // the path concerns a tag folder
+    
     int h = 0;
     struct TableEntry *current, *tmp;
     HASH_ITER(hh, file_tags, current, tmp) {
       for (int j = 0; j < s; j++) {
-        if (!searchLabel(current->head, path_tags[j])) {
-          goto next_getattr;
+        LL_FOREACH(current->head, current_tag) {
+          if (regexec(regex+j, current_tag->name, 0, NULL, 0)) {
+            goto next_getattr;
+          }
         }
       }
       h = 1;
@@ -181,13 +188,13 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
     }
     
     if (h) // a file has all the tags
-      res = stat(dirpath, stbuf); 
+    res = stat(dirpath, stbuf); 
     else if (s == 1 && findTableEntry(&tag_files, path_tags[0])) // the tag has no file referencing it
-      res = stat(dirpath, stbuf); 
+    res = stat(dirpath, stbuf); 
     else 
     { 
       for(int i=0;i<s;i++)
-        addTableEntry(&tag_files, path_tags[i]);
+      addTableEntry(&tag_files, path_tags[i]);
       res = stat(dirpath,stbuf);
     }
   }
@@ -200,7 +207,7 @@ static int tag_getattr(const char *path, struct stat *stbuf) {
 
 /* list files within directory */
 static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
-      
+  
   LOG("readdir '%s'\n", path);
   
   // check if modifications have been done in the source directory
@@ -212,7 +219,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
   struct Label *current_tag;
   struct TableEntry *tag_folders = NULL;
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+  int s = fillpathtags(path_tags, path); // get the tags in the path
   
   HASH_ITER(hh, file_tags, current_file, tmp) {
     // case of the root folder
@@ -227,7 +234,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       for (int j = 0; j < s; j++) {
         hastags = 0;
         LL_FOREACH(current_file->head, current_tag) {
-          if (!strcmp(current_tag->name, path_tags[j])) {
+          if (!regexec(regex+j, current_tag->name, 0, NULL, 0)) {
             hastags = 1;
             break;
           }
@@ -240,7 +247,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       // display the file
       filler(buf, current_file->name, NULL, 0);
     }
-      
+    
     // get its tags to create folders
     current_tag = NULL;
     LL_FOREACH(current_file->head, current_tag) {
@@ -253,7 +260,7 @@ static int tag_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
       continue;
     }
   }
-
+  
   // display the folders corresponding to the tags 
   HASH_ITER(hh, tag_folders, current_file, tmp) {
     filler(buf, current_file->name, NULL, 0);
@@ -272,19 +279,19 @@ int tag_read(const char *path, char *buffer, size_t len, off_t off, struct fuse_
   FILE *fd;
   char *cmdoutput;
   int res;
-
+  
   LOG("read '%s' for %ld bytes starting at offset %ld\n", path, len, off);
-
+  
   asprintf(&command, "cat %s", realpath);
   LOG("read using command %s\n", command);
-
+  
   /* open the output of the command */
   fd = popen(command, "r");
   if (!fd) {
     res = -errno;
     goto out;
   }
-
+  
   /* read up to len+off bytes from the command output */
   cmdoutput = malloc(len+off);
   if (!cmdoutput) {
@@ -301,43 +308,40 @@ int tag_read(const char *path, char *buffer, size_t len, off_t off, struct fuse_
     /* we failed to read enough */
     res = 0;
   }
-
+  
   free(cmdoutput);
   free(command);
-
- out_with_fd:
+  
+  out_with_fd:
   pclose(fd);
- out:
+  out:
   if (res < 0)
-    LOG("read returning %s\n", strerror(-res));
+  LOG("read returning %s\n", strerror(-res));
   else
-    LOG("read returning success (read %d)\n", res);
+  LOG("read returning success (read %d)\n", res);
   free(realpath);
   return res;
 }
 
 /* add a new tag to file 
- * example: ln a.jpg baz/a.jpg 
- */
+* example: ln a.jpg baz/a.jpg 
+*/
 int tag_link(const char* from, const char* to) {
   int res = 0;
   
   LOG("link '%s'->'%s'\n", from, to);
   
-  char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s_to = tag_fillpathtags(path_tags_to, to); // get the tags in the path
-  
-  char ** path_tags_from = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s_from = tag_fillpathtags(path_tags_from, from); // get the tags in the path
+  char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
+  int s = fillpathtags(path_tags, to); // get the tags in the path
   
   // the last string of path_tags is the name of the file
-  if (!strcmp(path_tags_from[s_from-1], path_tags_to[s_to-1])) {
-    if (findTableEntry(&file_tags, path_tags_from[s_from-1])) {
-      for (int j = 0; j < s_to-1; j++) {
-        if (findTableEntry(&tag_files, path_tags_to[j])) {
+  if (!strcmp(from+1, path_tags[s-1])) {
+    if (findTableEntry(&file_tags, path_tags[s-1])) {
+      for (int j = 0; j < s-1; j++) {
+        if (findTableEntry(&tag_files, path_tags[j])) {
           // update the data structures
-          addEntryLabel(&file_tags, path_tags_from[s_from-1], path_tags_to[j]);
-          addEntryLabel(&tag_files, path_tags_to[j], path_tags_from[s_from-1]);
+          addEntryLabel(&file_tags, path_tags[s-1], path_tags[j]);
+          addEntryLabel(&tag_files, path_tags[j], path_tags[s-1]);
         }
       }
     }
@@ -353,47 +357,39 @@ int tag_link(const char* from, const char* to) {
   // update the ./tags file
   updateTags(tagpath, &file_tags);
   
-  for(int j = 0; j < s_to; j++) free(path_tags_to[j]);
-  free(path_tags_to);
-  for(int j = 0; j < s_from; j++) free(path_tags_from[j]);
-  free(path_tags_from);
+  for(int j = 0; j < s; j++) free(path_tags[j]);
+  free(path_tags);
   return res;
 }
 
 /* change a tag into another 
- * example: mv foo/a.jpg baz/a.jpg 
- */
+* example: mv foo/a.jpg baz/a.jpg 
+*/
 int tag_rename(const char* from, const char* to) {
   int res = 0;
   
   LOG("rename '%s'->'%s'\n", from, to);
   
   char ** path_tags_from = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s_from = tag_fillpathtags(path_tags_from, from);
+  int s_from = fillpathtags(path_tags_from, from);
   char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s_to = tag_fillpathtags(path_tags_to, to);
+  int s_to = fillpathtags(path_tags_to, to);
   
-  if (!strcmp(path_tags_to[s_to-1], path_tags_from[s_from-1])) {
-    struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[s_from-1]);
+  if (s_from == 2 && s_to == 2 && !strcmp(path_tags_to[1], path_tags_from[1])) {
+    struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[1]);
     
-    for (int j = 0; j < s_from-1; j++) {
-      struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[j]);
-      delLabel(&t_from->head, path_tags_from[s_from-1]);
-      delLabel(&f->head, path_tags_from[j]);
-    }
+    struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[0]);
+    addLabel(&t_to->head, path_tags_to[1]);
+    addLabel(&f->head, path_tags_to[0]);
     
-    for (int j = 0; j < s_to-1; j++) {
-      struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[j]);
-      if (!t_to) t_to = addTableEntry(&tag_files, path_tags_to[j]);
-      addLabel(&t_to->head, path_tags_to[s_to-1]);
-      addLabel(&f->head, path_tags_to[j]);
-    }
+    struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[0]);
+    delLabel(&t_from->head, path_tags_from[1]);
+    delLabel(&f->head, path_tags_from[0]);  
   }
   else {
     LOG("rename syntax not corresponding to the protocole\n");
     res = -EPERM;
   }
-  
   // update the ./tags file
   updateTags(tagpath, &file_tags);
   
@@ -405,15 +401,15 @@ int tag_rename(const char* from, const char* to) {
 }
 
 /* remove a tag from a file 
- * example: rm montag/a.jpg 
- */
+* example: rm montag/a.jpg 
+*/
 int tag_unlink(const char* path) {
   int res = 0;
   
   LOG("unlink '%s'\n", path);
   
   char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-  int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+  int s = fillpathtags(path_tags, path); // get the tags in the path
   
   if (s >= 2) {
     struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
@@ -424,8 +420,8 @@ int tag_unlink(const char* path) {
       delLabel(&f->head, path_tags[j]);
       if(countLabels(t->head)==0)
       {
-	       LOG("%s",path_tags[j]);
-         delTableEntry(&tag_files,path_tags[j]);
+        LOG("%s",path_tags[j]);
+        delTableEntry(&tag_files,path_tags[j]);
       }
     }
   } 
@@ -443,8 +439,8 @@ int tag_unlink(const char* path) {
 }
 
 /* create a new tag not yet bound to a file 
- * example: mkdir montag/
- */
+* example: mkdir montag/
+*/
 int tag_mkdir(const char* path, mode_t mode) {
   int res = 0;
   LOG("mkdir '%s'\n", path);
@@ -453,8 +449,8 @@ int tag_mkdir(const char* path, mode_t mode) {
 }
 
 /* remove a non used tag 
- * example: rmdir montag
- */
+* example: rmdir montag
+*/
 int tag_rmdir(const char* path) {
   int res = 0;
   struct TableEntry *current, *tmp;
@@ -471,19 +467,19 @@ int tag_rmdir(const char* path) {
 }
 
 /* handle ioctl system call 
- * return the chained list of tags corresponding to the file
- */
+* return the chained list of tags corresponding to the file
+*/
 int tag_ioctl(const char* path, int cmd, void* arg, struct fuse_file_info* fi, unsigned int flags, void* data) {
   int res = 0;
   LOG("ioctl '%s'\n", path);
-      
+  
   // check if the request is handled
   switch(cmd) {
     case IOC_GET_TAGS:
     {
       // get the name of the file
       char ** path_tags = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
-      int s = tag_fillpathtags(path_tags, path); // get the tags in the path
+      int s = fillpathtags(path_tags, path); // get the tags in the path
       
       // find the file in file_tags
       struct TableEntry *f = findTableEntry(&file_tags, path_tags[s-1]);
@@ -524,17 +520,17 @@ static struct fuse_operations tag_oper = {
 };
 
 /*******************
- * Main
- */
+* Main
+*/
 
 int main(int argc, char ** argv) {
   int err;
-
+  
   if (argc < 2) {
     fprintf(stderr, "missing destination directory\n");
     exit(EXIT_FAILURE);
   }
-
+  
   dirpath = realpath(argv[1], NULL);
   dir = opendir(dirpath);
   if (!dir) {
@@ -543,7 +539,7 @@ int main(int argc, char ** argv) {
   }
   argv++;
   argc--;
-
+  
   mylog = fopen(LOGFILE, "a");
   
   // parse the .tags file to init global hash tables
@@ -595,19 +591,19 @@ int main(int argc, char ** argv) {
       if (inotifyfd == -1) { LOG("error: inotify_init()\n"); break; }
       if ((wd = inotify_add_watch(inotifyfd, dirpath, IN_ALL_EVENTS)) == -1) { LOG("error: inotify_add_watch()\n"); break; }
       while(1) {
-          numRead = read(inotifyfd, buf, 1024);
-          if (numRead <= 0) { LOG("error: read from inotifyfd\n"); break; }
-          event = (struct inotify_event *) buf;
-          if (!(event->mask & IN_ISDIR)) { // subdirectories are not handled
-            if ((event->mask & IN_CREATE) || (event->mask & IN_MOVED_TO)) { // new file
-              LOG("inotify: newfile added '%s'\n", event->name);
-              inotify_write(NEWFILE, event->name);
-            }
-            if ((event->mask & IN_DELETE) || (event->mask & IN_MOVED_FROM)) { // deleted file
-              LOG("inotify: file deleted '%s'\n", event->name);
-              inotify_write(DELFILE, event->name);
-            }
+        numRead = read(inotifyfd, buf, 1024);
+        if (numRead <= 0) { LOG("error: read from inotifyfd\n"); break; }
+        event = (struct inotify_event *) buf;
+        if (!(event->mask & IN_ISDIR)) { // subdirectories are not handled
+          if ((event->mask & IN_CREATE) || (event->mask & IN_MOVED_TO)) { // new file
+            LOG("inotify: newfile added '%s'\n", event->name);
+            inotify_write(NEWFILE, event->name);
           }
+          if ((event->mask & IN_DELETE) || (event->mask & IN_MOVED_FROM)) { // deleted file
+            LOG("inotify: file deleted '%s'\n", event->name);
+            inotify_write(DELFILE, event->name);
+          }
+        }
       }
       inotify_rm_watch(inotifyfd, wd);
       close(inotifyfd);
