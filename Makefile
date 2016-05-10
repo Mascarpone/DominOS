@@ -12,5 +12,8 @@ printtags: printtags.o parser/parser.o parser/HashTable.o
 %.o: %.c
 	gcc -c $< -o $@ $(CPPFLAGS) $(CFLAGS) 
 
+parse_test: parser/parser.o parser/HashTable.o tests/parse_test.o
+		gcc $^ -o $@
+
 clean:
-	$(RM) tagfs *.o *.log parser/*.o printtags
+	$(RM) tagfs *.o *.log parser/*.o printtags tests/*.o
