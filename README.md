@@ -75,7 +75,7 @@ In the root folder of the project:
 ## Testing tagfs
 You can launch all the bash scripts from the `tests/` folder in the root folder of the project.
 You can launch **testparser** in the root folder of the project.
-You can launch **perfs** in the `mnt` folder after starting the fuse daemon in it.
+You can launch **testperfs** in the `mnt` folder after starting the fuse daemon in it.
 
 
 
