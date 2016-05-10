@@ -370,16 +370,21 @@ int tag_rename(const char* from, const char* to) {
   char ** path_tags_to = malloc(sizeof(char*)*(getTableSize(&tag_files) + 1));
   int s_to = tag_fillpathtags(path_tags_to, to);
   
-  if (s_from == 2 && s_to == 2 && !strcmp(path_tags_to[1], path_tags_from[1])) {
-    struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[1]);
+  if (!strcmp(path_tags_to[s_to-1], path_tags_from[s_from-1])) {
+    struct TableEntry *f = findTableEntry(&file_tags, path_tags_from[s_from-1]);
     
-    struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[0]);
-    addLabel(&t_to->head, path_tags_to[1]);
-    addLabel(&f->head, path_tags_to[0]);
+    for (int j = 0; j < s_from-1; j++) {
+      struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[j]);
+      delLabel(&t_from->head, path_tags_from[s_from-1]);
+      delLabel(&f->head, path_tags_from[j]);
+    }
     
-    struct TableEntry *t_from = findTableEntry(&tag_files, path_tags_from[0]);
-    delLabel(&t_from->head, path_tags_from[1]);
-    delLabel(&f->head, path_tags_from[0]);  
+    for (int j = 0; j < s_to-1; j++) {
+      struct TableEntry *t_to = findTableEntry(&tag_files, path_tags_to[j]);
+      if (!t_to) t_to = addTableEntry(&tag_files, path_tags_to[j]);
+      addLabel(&t_to->head, path_tags_to[s_to-1]);
+      addLabel(&f->head, path_tags_to[j]);
+    }
   }
   else {
     LOG("rename syntax not corresponding to the protocole\n");
